@@ -1,0 +1,114 @@
+version: '3.8'
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_AUTH_URL=http://localhost:5005
+      - REACT_APP_BOOKS_URL=http://localhost:5006
+      - REACT_APP_STATS_URL=http://localhost:5007
+      - WDS_SOCKET_PORT=0
+    networks:
+      - library-network
+    depends_on:
+      - auth-service
+      - books-service
+      - stats-service
+
+  auth-service:
+    build: ./authentication
+    ports:
+      - "5005:5000"
+    environment:
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres123
+      - DB_HOST=auth-db
+      - DB_NAME=auth_db
+      - SECRET_KEY=mysecretkey123
+    depends_on:
+      - auth-db
+    networks:
+      - library-network
+    restart: unless-stopped
+
+  auth-db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres123
+      - POSTGRES_DB=auth_db
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    networks:
+      - library-network
+    restart: unless-stopped
+
+  books-service:
+    build: ./books
+    ports:
+      - "5006:5000"
+    environment:
+      - MONGO_USER=root
+      - MONGO_PASSWORD=mongo123
+      - MONGO_HOST=books-db
+      - SECRET_KEY=secret123
+      - AUTH_SERVICE_URL=http://auth-service:5000
+    depends_on:
+      - books-db
+      - auth-service
+    networks:
+      - library-network
+    restart: unless-stopped
+
+  books-db:
+    image: mongo:6
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=mongo123
+      - MONGO_INITDB_DATABASE=books_db
+    volumes:
+      - books-db-data:/data/db
+    networks:
+      - library-network
+    restart: unless-stopped
+
+  stats-service:
+    build: ./statistics
+    ports:
+      - "5007:5000"
+    environment:
+      - REDIS_HOST=stats-db
+      - REDIS_PASSWORD=redis123
+      - SECRET_KEY=mysecretkey123
+      - BOOKS_SERVICE_URL=http://books-service:5000
+      - AUTH_SERVICE_URL=http://auth-service:5000
+    depends_on:
+      - stats-db
+      - books-service
+      - auth-service
+    networks:
+      - library-network
+    restart: unless-stopped
+
+  stats-db:
+    image: redis:7-alpine
+    command: redis-server --requirepass redis123
+    volumes:
+      - stats-db-data:/data
+    networks:
+      - library-network
+    restart: unless-stopped
+
+networks:
+  library-network:
+    driver: bridge
+
+volumes:
+  auth-db-data:
+  books-db-data:
+  stats-db-data:
